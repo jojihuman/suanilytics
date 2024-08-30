@@ -1,0 +1,1090 @@
+---
+title: "Operation: Black Knights"
+author: "Jeyson + George"
+date: "`r Sys.Date()`"
+output:
+  bookdown::html_document2:
+    fig_caption: yes
+    number_sections: yes
+    self_contained: yes
+    theme: flatly   
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+    code_tools: true
+    global_numbering: true
+
+---
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(gt)
+library(emmeans)
+library(reactable)
+library(plotly)
+library(ggpubr)
+library(janitor)
+events = read.csv("data/events2024.csv")
+events = events %>% mutate(attendance = as.numeric(attendance), socpercent = as.numeric(socpercent), week = as.factor(week), year = as.factor(year), costvatt = as.numeric(costvatt), international = as.numeric(international))
+
+attend_summary_regular = events %>% filter(semester == 1, type == "Regular Event")  %>% group_by(year) %>% summarise(mean_attend = mean(socpercent, na.rm = TRUE), iqr = IQR(socpercent, na.rm = TRUE))
+
+```
+
+# Executive Summary
+
+- Between 2022-2024, attendance rates of our Regular Events have not significantly changed, whilst attendance of CAS and Drawmeet have been steadily increasing.
+
+- Member Demographics have not significantly changed, with very similar member subculture and event type interests over the years. 
+
+- However, our society's composition has significantly changed, from primarily new members in 2023, to mainly returning members in 2024. Society has shifted to be comprised of primarily Third Years or above. We suspect this is due to our lower society reach due to lack of a Discord during this time period.
+
+- International Student presence has slightly decreased since 2023, we are no longer mainly international students, (Still very close to 50-50 though). 
+
+- The number of members attending our events that are returning members has increased since 2023 due to this change in society composition. However, despite this, our newer events have done a good job in retaining majority new member attendance. 
+
+- Additionally, the number of members that attend events that are female has increased, so in this way we are beating the sausage fest allegations.
+
+- Our average spending of events has decreased since 2022 and 2023, but the average cost spent per person has increased. This is due to having a much lower member count for attendance since our society is also smaller this year. 
+
+- A KNN, Regression Tree, Random Forest, and SVM model has been built for the purposes of predicting and modelling attendance. With 10-fold cross validation with 10 repeats, most models demonstrated a MAE of around 2.5% (Prediction is off by ~2.5% on average). 
+
+- The best performing model was a KNN model using k = 4 with a MAE of 2.313. The other models struggled in performance due to the limited availability of data.
+
+- A [Shiny App](https://ayasnisam.shinyapps.io/prediction/) has been deployed for the four models made in this report. 
+
+# Has the attendance figures changed between 2022 to 2024??
+
+- The attendance percentages of each SUAnime Regular Event (For Semester 1 of 2022-2024) have been graphed in Figure 1.
+
+- The general event attendance trend of SUAnime goes as follows = High Counts during Week 1, followed by significantly lower attendance rates which pick back up at the final week. (Do note- Good amount of missing entries for 2022)
+
+- If we look at society percentage attendance- We see very similar trends in our attendance figures this year compared to 2023 sem 1! But! Our mid sem performance (Weeks 5-12) have tanked severely compared to 2023.
+
+- However, we also see that our attendance in the middle weeks are much worse compared to 2023 (They are quite similar to 2022)
+
+Overall, here are the stats for average attendance throughout the years:
+
+- The average attendance (%) for our Regular Events throughout 2022-2024 was `r round(mean(attend_summary_regular$mean_attend), 2)`%
+    - In 2022, it was `r round(attend_summary_regular["mean_attend"][1,],2)`%
+    - In 2023, it was `r round(attend_summary_regular["mean_attend"][2,],2)`%
+    - In 2024, it was `r round(attend_summary_regular["mean_attend"][3,],2)`%
+    
+**Honourable Mentions**:
+The weeks with high attendance percentages in the middle of the semester (Week 3-5) correlate to the following type of events:
+
+- Drinks Nights and Trivias (W3 in 2022, W4 in 2023 and 2024)
+- Sports & BBQ Event (W3) in 2023
+- Dorayaki Event in W3 2024 
+
+```{r, fig1, warning = FALSE, fig.cap = "Barplots Showing Attendance(%)"}
+# Let's look at the trends of Regular Event Attendance throughout the weeks!
+# We will compare Sem 1 Performance here
+reg_events_sem1 = events %>% filter(type == "Regular Event" & semester == 1)
+ggplot(reg_events_sem1, aes(x = week, y = socpercent)) + geom_bar(stat = "identity") + facet_wrap(~year, scales = 'free_x') + theme_bw() + ylab("Attendance (%)") + xlab("Week")
+```
+
+## Have they Statistically Significantly changed though? (Mostly a Luke Section, read report in own time)
+Looking at the histograms is nice and all, but let's actually statistically test that attendance figures have changed over the three years. The plan is to do this with an ANOVA test if the assumptions are met (Spoiler: They are not), if they aren't met, an alternate approach should be used.
+
+### Assumptions:
+#### Assumption 1 Does the distribution of Attendance follow a normal distribution?
+```{r, warning = FALSE}
+ggplot(reg_events_sem1, aes(sample = socpercent)) + geom_qq() + facet_grid(~year) + geom_qq_line() + theme_bw()
+```
+For a normal distribution, this normally means each dot points in this QQ-Plot graph are close to the QQ Line, and deviate as you go away from the center. In this case, the points deviate from the line in a random pattern, indicating non-normality (The sample size of 13 weeks at most also means the normality assumption can't be fixed by applying the CLT). So, no t-test/ ANOVA methods are suitable here. In this case I will perform a Kruskal Wallis Test.
+
+### Kruskal Wallis Test- Have attendance figures significantly changed between 2022 to 2024??
+
+```{r}
+# Thx Garth
+attend = kruskal.test(socpercent ~ year, data = reg_events_sem1)
+attend
+```
+At an overall level attendance figures (In terms of percentage) have not significantly changed! (Which we saw in the histograms earlier). Why is that?? Perhaps the hints may lie in our member demographics? 
+
+## Wait wait, What about CAS or Drawmeet?
+
+- From 2022-2023, we see that CAS and Drawmeet attendance has significantly increased. And interest in CAS and Drawmeet have been retained between 2023-2024, with CAS being at it's peak this year. Some possible reasons I can think of for this:
+
+  - Member interest towards these weekly events have increased- This is supported by "Creative" (Artsy/ Make something) type of events having good attendance % this year as seen in [What type of Events are our members interested in anyways??]
+    
+  - These events have been better marketed (Announced through instagram, word of mouth, etc.) and members are more aware of when these events ran.
+
+```{r, warning = FALSE}
+# We will compare Sem 1 Performance here again
+cas = events %>% filter(eventname == "Cards Against SUAnime" & semester == 1)
+draw = events %>% filter(eventname == "Drawmeet" & semester == 1)
+
+ggplot(cas, aes(x = week, y = socpercent)) + geom_bar(stat = "identity") + facet_wrap(~year, scales = 'free_x') + theme_bw() + ylab("Attendance (%)") + xlab("Week") + ggtitle("CAS Attendance (%) over the Years")
+
+ggplot(draw, aes(x = week, y = socpercent)) + geom_bar(stat = "identity") + facet_wrap(~year, scales = 'free_x') + theme_bw() + ylab("Attendance (%)") + xlab("Week") + ggtitle("Drawmeet Attendance (%) over the Years")
+
+```
+
+# Have our Member Demographics Changed??
+## TLDR: Not that much!
+- Our subculture demographics haven't significantly changed.
+
+- We have ran similar categories of events this year vs 2023. Throughout the years, there has always been interest in any Food-related events. Creative Type Events such as Mahou Shoujo this year / Keychain Kreation also perform decently and have potential.
+
+- Most of our membership has changed from 60-40 for New-Returning Members to 40-60. This can be attributed to our lower reach this year due to No Discord.
+
+- Despite this setback, majority of our attendance still comes from our New Members- we generally have done a good job capturing their interest with the events this year.
+
+## Subculture Demographics
+Comparing our subculture demographics between 2023 and 2024 in the figure below, we see similar trends in subculture interests, Manga is the top interest, followed by Genshin and Gacha Games. 
+
+```{r fig3, fig.cap = "Barplots comparing 2023 vs 2024 subculture interests"}
+# New Data
+member2024 = read.csv("data/members2024.csv")[1:16]
+# Change Colnames
+new_names = c("timestamp", "firstname", "preferredname", "lastname", "usu_number", "gender", "pronouns", "email", "faculty", "other_uni", "year", "dom_int", "subcultures", "socials", "enjoyed_anime", "signup_loc")
+colnames(member2024) = new_names
+
+member2024 = member2024 %>% mutate(subculture = tolower(member2024$subculture))
+member2024$interests= str_split(member2024$subculture, ",") 
+interests_temp = c()
+# Split up the subculture interests into individual entries, then join them into a large vector
+for (interest in member2024$interests){
+  interests_temp = append(interests_temp, trimws(interest))
+}
+
+# Look at all entries in the vector, do some counting, replacing and get a dataframe of all subcultures
+interests2024 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_equal(interests_temp, "") ~ NA, TRUE ~ interests_temp) %>% forcats::fct_lump_min(min = 4) %>% table() %>% data.frame() %>% mutate(percent = 100* Freq/dim(member2024)[1], year = as.factor(2024))
+
+colnames(interests2024) = c("subculture", "interested", "interested_prop", "year")
+
+# ggplot(interests2024, aes(x = subculture, y = interested)) + geom_bar(stat = "Identity") + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + ggtitle("2024 Member Subculture Demographics")
+
+member2023 = read.csv("data/members2023.csv")[1:15]
+new_names = c("timestamp", "firstname", "preferredname", "lastname", "usu_number", "gender", "pronouns", "email", "faculty", "year", "dom_int", "subculture", "socials", "enjoyed_anime", "signup_loc")
+
+# Cleaning up Colnames again
+colnames(member2023) = new_names
+member2023 = member2023 %>% mutate(subculture = tolower(member2023$subculture))
+member2023$interests= str_split(member2023$subculture, ",") 
+interests_temp = c()
+
+# Split up the subculture interests into individual entries, then join them into a large vector
+for (interest in member2023$interests){
+  interests_temp = append(interests_temp, trimws(interest))
+}
+
+# Look at all entries in the vector, do some counting, replacing and get a dataframe of all subcultures
+interests2023 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_equal(interests_temp, "") ~ NA, TRUE ~ interests_temp) %>% forcats::fct_lump_min(min = 4) %>% table() %>% data.frame() %>% mutate(percent = 100* Freq/dim(member2023)[1], year = as.factor(2023))
+
+colnames(interests2023) = c("subculture", "interested", "interested_prop", "year")
+
+# ggplot(interests2023, aes(x = subculture, y = interested)) + geom_bar(stat = "Identity") + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + ggtitle("2023 Member Subculture")
+
+# Plot the Subculture Interests
+p1 = ggplot(interests2024, aes(x = subculture, y = interested_prop)) + geom_bar(stat = "Identity") + theme_bw() + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + ggtitle("2024 Member Subculture") + ylab("Percentage") + xlab("Subculture") 
+
+p2 = ggplot(interests2023, aes(x = subculture, y = interested_prop)) + geom_bar(stat = "Identity") + theme_bw() + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + ggtitle("2023 Member Subculture") + ylab("Percentage") + xlab("Subculture")
+
+ggarrange(p1, p2)
+```
+
+### Permutation Test- Has SUAnime Subcultures changed over the years?
+Once again, it's time to test this with stats, usually this can be done with a **chi-squared test**. Unfortunately in our case, some expected cell counts is < 5, which contradicts one of the assumptions required, so instead we'll go with a Permutation Test- We simulate a bunch of test statistics to determine the chance of getting a test statistic as or more significant than the test statistic of our sample.
+```{r}
+interests_2023_long = interests2023$interested %>% t() %>% as.data.frame()
+interests_2024_long = interests2024$interested %>% t() %>% as.data.frame()
+colnames(interests_2023_long) = interests2023$subculture
+colnames(interests_2024_long) = interests2024$subculture
+
+interests_mat = interests_2023_long %>% as.matrix() %>% rbind(interests_2024_long %>% as.matrix()) 
+rownames(interests_mat) = c("2023", "2024")
+
+# Thanks Garth- Or did I write this?? I forgot
+# Test that all expected values >= 5
+expected_val <- function(table, caption_name){
+  # Given a table input, compute the expected values
+  # Doesn't matter we take a row sum or column sum for the total size
+  total_size = sum(rowSums(table))
+  expected_vals = c() 
+  r = nrow(table)
+  c = ncol(table)
+  # Calculate eij in a vector
+  for (j in 1:c)
+    for (i in 1:r)
+      expected_vals = append(expected_vals, rowSums(table)[i]* colSums(table)[j] / total_size)
+  
+  # Using the vector, create a table of all expected values
+  eij = matrix(data = expected_vals, nrow = r, ncol = c)
+  colnames(eij) = colnames(table)
+  rownames(eij) = rownames(table)
+  # Produce gt table
+  as.data.frame(eij) %>% gt(rownames_to_stub = T) %>% fmt_number() %>% tab_caption(caption_name)
+}
+
+expected_val(interests_mat, "Expected Cell Counts of Subculture Interests")
+chisq.test(interests_mat, simulate.p.value = TRUE, B = 10000)
+```
+The chance of getting a test statistic as or more extreme than our own is 0.2932- Much greater than a level of significance 0.05, therefore we can conclude that member subculture interests have not undergone a statistically significant change between 2023 and 2024.
+
+## What type of Events are our members interested in anyways??
+We can find out! By looking at the events they've attended (Outside of the peak weeks!). We'll focus primarily on the middle of the semester (This is weeks 5-12, where people get busy with assignments and deadlines etc.)
+
+A set of 3 barplot detailing events (1 for each year) is shown below- Each colour represents a different category of event and the y-axis represents percentage of members attended. Overall from the graphs we see:
+
+- Food Events such as Maid Cafe, Dango Event, Cup Noodles and Hell's Kitchen tend to perform very well despite being set during the middle of the semester. (They always get > 7.5% attendance, and this is retained between 2023 and 2024).
+
+- Board Game Nights also tend to perform quite well (Approaching around the 7.5% marks) - I'm not sure how much of an effect the prizes had on the attendance, from my experiencing captaining Competitive side people were mostly there just to have a good time. 
+
+- Market Events with stalls are always quite nice (Even outside of Peak event times!) - People like browsing and buying stuff. Though their higher attendance is more likely due to them being longer + People visiting and taking one round.
+
+- Creative Events (Anything where members make something- I.e VN, Omamori, Keychain etc. here) are perform quite closely with the hangout events (In 2024, they performed slightly better- Will note VN has lower attendance but this was due to an emergency venue switch cause of Alarm going off). I believe based on the historical data they have POTENTIAL to compete with our other core events, as members have shown and maintained an interest in them.
+
+- Hangout Events (Study Cafes, Wasabi Collab) are outperformed by the other events, though this isn't conclusive cause there weren't any events of this type to refer to in 2023.
+
+- Political Events tend to get around 5% of member attendance.
+
+- TCG events generally had low attendance rates, though it is to be expected since TCG isn't really in our main members demographic (See [I Smell Fresh Blood??] section).
+
+
+```{r, warning = FALSE}
+top = events %>% arrange(desc(socpercent)) %>% filter(!week %in% c(0:5, 13)) 
+
+# Giving more accurate categories for each event here
+top = top %>% mutate(class = case_when(
+  str_starts(eventname, "Maid") ~ "Food", 
+  str_starts(eventname, "Dango") ~ "Food", 
+  str_starts(eventname, "Cup") ~ "Food",
+  str_starts(eventname, "Creativity") ~ "Food",
+  str_starts(eventname,"Board") ~ "Games",
+  str_starts(eventname,"Tabletop") ~ "Games",
+  str_starts(eventname,"Stickers") ~ "Creative",
+  str_starts(eventname,"Keychain") ~ "Creative",
+  str_starts(eventname, "Mahou") ~ "Creative",
+  str_starts(eventname, "SUMASH") ~ "Market",
+  str_starts(eventname, "Market") ~ "Market",
+  str_starts(eventname, "Visual") ~ "Creative",
+  str_starts(eventname, "WASABI") ~ "Hangout",
+  str_starts(eventname, "Meet") ~ "Hangout",
+  str_starts(eventname, "AGM") ~ "Political",
+  str_starts(eventname, "GM") ~ "Political",
+  class == "Arts" ~ "Creative",
+  class == "Chill" ~ "Hangout", 
+  class == "Sports" ~ "Hangout",
+  TRUE ~ class
+  ))
+
+top$class = as.factor(top$class)
+
+color_palette <- c(
+  "#d62728",
+  "#ff7f0e",
+  "#2ca02c",  
+  "#1f77b4",
+  "#9467bd",  
+  "#e377c2"   
+)
+
+# Labeller Function- Makes the facet wrap labels be more accurate!
+sem_names = list(
+  '1' = "Semester 1",
+  '2' = "Semester 2"
+  )
+
+sem_labeller <- function(variable, value){
+  return(sem_names[value])
+}
+
+
+# I have no clue how to arrange this by class, soz.
+p1 = top %>% filter(year == 2022 & type == "Regular Event") %>% ggplot(aes(x = eventname, y = socpercent, fill = class)) + geom_bar(position = "dodge",stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Attendance (%)") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + ggtitle("Event Attendance (2022)") + scale_fill_manual(values = c(
+  "#d62728","#ff7f0e",  "#17becf", "#9467bd", "#e377c2", "#2ca02c", "#1f77b4")) + ylim(c(0, 12)) + facet_wrap(~semester, scales = 'free', labeller = sem_labeller)
+
+p2 = top %>% filter(year == 2023  & type == "Regular Event") %>% ggplot(aes(x = eventname, y = socpercent, fill = class)) + geom_bar(position = "dodge",stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle("Event Attendance (2023)") + ylab("Attendance (%)") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + scale_fill_manual(values = color_palette) + ylim(c(0, 12)) + facet_wrap(~semester, scales = 'free', labeller = sem_labeller)
+
+p3= top %>% filter(year == 2024  & type == "Regular Event"| type == "Hangout") %>% ggplot(aes(x = eventname, y = socpercent, fill = class)) + geom_bar(position = "dodge",stat = "identity") + ggtitle("Event Attendance (2024)") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Attedance (%)") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + scale_fill_manual(values = c(
+  "#d62728","#ff7f0e", "#2ca02c", "#17becf", "#9467bd", "#e377c2", "#1f77b4")) + ylim(c(0, 12))
+
+p1 
+p2
+p3
+
+ggsave("figures/p1.png", p1)
+ggsave("figures/p2.png", p2)
+ggsave("figures/p3.png", p3)
+```
+
+## I Smell Fresh Blood??
+One reason that could contribute to similar member demographics is having a high percentage of members being returning members, so in the investigation of **Returning** (Have joined SUAnime in 2022 / 2023, and rejoined in 2024) vs **New Fresh Blood** (Joined SUAnime for the first time this year) in SUAnime, we actually do see that over the years- Membership has shifted from Mostly new members in 2022-2023 to now returning members being the majority! 
+
+```{r, warning = FALSE}
+# Loading up Member 2022
+member2022 = read.csv("data/members2022.csv")[1:11]
+new_names = c("timestamp", "firstname", "preferredname", "lastname", "gender", "email", "usu_number", "degree", "year", "dom_int", "signup_loc")
+colnames(member2022) = new_names
+
+# What is the percentage of returning members?? 
+# If I look based on names, I gain the ability to track Non-USYD Members at the cost of losing some name matches
+# (People might write names differently in the forms over the years- I'm pretty sure I am a victim of this effect)
+
+# Process of getting names here
+member2024 = member2024 %>% mutate(fullname = paste(firstname, lastname) %>% trimws() %>% tolower())
+member2023 = member2023 %>% mutate(fullname = paste(firstname, lastname) %>% trimws() %>% tolower())
+member2022 = member2022 %>% mutate(fullname = paste(firstname, lastname) %>% trimws() %>% tolower())
+returns_names = 100* c(mean(member2024$fullname %in% member2023$fullname), mean(member2023$fullname %in% member2022$fullname), mean(member2024$fullname %in% member2023$fullname | member2024$fullname %in% member2022$fullname))
+
+# If I look based on USU Number, I have to cut out membership ID = 0, since we lose the ability to look at Non-USYD members
+usu_2024 = member2024 %>% filter(usu_number != 0) 
+usu_2023 = member2023 %>% filter(usu_number != 0)
+usu_2022 = member2022 %>% filter(usu_number != 0)
+
+returns_usu = 100* c(mean(usu_2024$usu_number%in% usu_2023$usu_number | 
+                            member2024$fullname %in% member2023$fullname), 
+                     mean(usu_2023$usu_number %in% usu_2022$usu_number | 
+                            member2023$fullname %in% member2022$fullname), 
+                     mean(usu_2024$usu_number %in% usu_2023$usu_number | usu_2024$usu_number %in% usu_2022$usu_number | member2024$fullname %in% member2023$fullname | member2024$fullname %in% member2022$fullname))
+
+# For now, my call is look at the USU numbers, RIP UTS / UNSW / Externals people
+mem_retention = data.frame(Year = c("2023-24", "2022-23", "2022-24"), `Membership` = c(returns_usu, 100 - returns_usu), Group = c(rep("Returning", 3), rep("New", 3)))
+
+# Barplot
+return_plot = ggplot(mem_retention, aes(x = Year, y= Membership, fill = Group)) + geom_bar(position = "dodge", stat = "identity") + ggtitle("Returning Members Over 2022-2024") + ylab("Membership (%)")
+# Or Table
+return_tab = mem_retention %>% gt() %>% fmt_number(2) %>% tab_header("Returning Members Over 2022-2024 in %")
+
+return_plot
+```
+
+### Appeasing the Fresh Blood!!
+Our current membership is currently skewed towards more returning members, but what about the ratio of returning vs new members in terms of event attendance? In the figure below, we see that:
+
+- Considering the composition of our society, we have done a good job getting new members to attend our events, asWith the exception of Week 11 (WASABI) and Week 5 (Trivia), most event attendance is skewed towards new members (< 50% attendees are returning members)- I.e. A 40% Returning Member Attendance in 2024 is much better than 40% returning member attendance in 2023.
+
+- Note that our new event ideas such as VN, Mahou Shoujo and Stickers also maintain this trend. 
+
+- Considering the circumstances of this year: No Discord = Less reach to Newer Members. We believe that the overall increase in returning member attendance is more a consequence of this rather than a failure to appeal to our new members.
+
+- Given that we have ran a similar variety of events between 2023 and 2024, this implies that our member demographics in terms of the type of events changed, have not significantly changed. 
+
+
+```{r fig5, warning = FALSE}
+attendance_2024 = data.frame()
+# List of Exec USUs- These are USU numbers to ignore
+# Order = George, Luke, Alex, Marshall, Thomas, Jeyson, Lucinda, Michael, Summer, Reggie, Eunice, Momo, Jin, David, Jeongwon, Zelu, Toufiq, Vidu, Lachlan, Steph, Cindy, Wendy, Jade, Clara, William
+exec_usus = c(2072539, 2211426, 2384144, 2237389, 2229025, 2224556, 2343769, 2063032, 2364528, 2326885, 2222064, 2353799, 2285564, 2411427, 2189572, 2366390, 2436355, 2353751, 1945520, 2319959, 2386582, 2402756, 2233015, 2458135, 2223030)
+
+# Look at every single member that is a returning member throughout all the weeks
+for (file in list.files("data/events2024")){
+  # Regex for getting the week number
+  week = sub("_(.*)$+", "", file)
+  # Regex for getting event name
+  name = sub(".*_(.*?)\\..*", "\\1", file)
+  # Load the file
+  attendance = read.csv(paste("data/events2024/", file, sep = ""))
+  # Change the column names
+  new_names = c("member", "usu_number", "notes", "new_notes", "attend_time", 
+                "non_mem", "X1","X2","X3", "X4", "X5", "X6", "gender", "social_media")
+  colnames(attendance) = new_names
+  # Remove NAs for our comparison
+  attendance = attendance %>% drop_na(usu_number)
+  # Compare all our internal memberships that have returned from either 2022 or 2023
+  returns = mean(attendance$usu_number!= 0 & !attendance$usu_number %in% exec_usus & (attendance$usu_number %in% member2023$usu_number |
+                 attendance$usu_number %in% member2022$usu_number))
+  temp_df = data.frame("week" = week, "event_name" = name, prop = returns, type = "returning", year = 2024)
+  attendance_2024 = rbind(attendance_2024, temp_df)
+}
+
+attendance_2024$week = factor(attendance_2024$week, levels = c("wk1", "wk2", "wk3", "wk4", "wk5", "wk7", "wk8", "wk9", "wk10", "wk11", "wk12", "wk13"))
+# How about the returning/new attendance for last year??
+attendance_2023 = data.frame()
+# Once again an exec list- Not bothered to list the names this time
+exec_usu_2023 = c(2053460, 1903353, 2104629, 2151736, 2063032, 2196365, 2257028, 2170037, 2211426, 2065623, 2020592, 2326885, 2147817, 2386582, 2353751, 2229025, 2119883, 2232391, 2007883, 2072539, 2222064, 2223030)
+
+# I feel like more for loops could've been avoided by having a better data format 
+for (file in list.files("data/events2023")){
+  # Regex for getting the week number
+  week = sub("_(.*)$+", "", file)
+  # Regex for getting event name
+  name = sub(".*_(.*?)\\..*", "\\1", file)
+  # Load the file
+  attendance = read.csv(paste("data/events2023/", file, sep = ""))
+  # Change the column names
+  new_names = c("member", "usu_number", "notes", "new_notes", "attend_time", 
+                "non_mem", "X1","X2","X3", "X4", "X5", "X6", "gender", "social_media")
+  colnames(attendance) = new_names
+  # Remove NAs for our comparison
+  attendance = attendance %>% drop_na(usu_number)
+  # Compare all our internal memberships that have returned from either 2022 or 2023
+  returns = mean(attendance$usu_number!= 0 & !attendance$usu_number %in% exec_usu_2023 &  (attendance$usu_number %in% member2022$usu_number))
+  temp_df = data.frame("week" = week, "event_name" = name, prop = returns, type = "returning", year = 2023)
+  attendance_2023 = rbind(attendance_2023, temp_df)
+}
+
+attendance_2023$week = factor(attendance_2023$week, levels = c("wk1", "wk2", "wk3", "wk4", "wk5", "wk7", "wk8", "wk9", "wk10", "wk11", "wk12", "wk13"))
+
+attendance_full = rbind(attendance_2023, attendance_2024) %>% mutate(year = as.factor(year))
+
+ggplot(attendance_full, aes(x = week, y = prop, fill = year)) + geom_bar(stat = "identity", position = "dodge") + theme_bw() + ylab("Returning Members Attendance (%)") + xlab("Week") + ggtitle("Returning Member Attendance in 2023 vs 2024")
+```
+
+## Degree Year Demographics
+Following the analysis above of returning and new member distributions, it's also important to look at the distribution of members and the year they are in their degree. This helps us identify the spread of year groups throughout the years and discern if there's a pattern. 
+
+```{r, warning = FALSE}
+events = events %>% mutate(firstyr = as.numeric(firstyr), secondyr = as.numeric(secondyr), thirdyrplus = as.numeric(thirdyrplus))
+memcount_2022 <- member2022 %>% count(year)
+memcount_2023 <- member2023 %>% count(year)
+memcount_2024 <- member2024 %>% count(year)
+```
+
+```{r}
+member2022 %>%
+  janitor::tabyl(year) %>%
+  gt::gt(caption = "SUAnime 2022 Member Spread by Year") %>%
+  gt::fmt_percent(columns = 3, decimals = 1) %>%
+  gt::cols_label(
+    year = md("Year of Degree"),
+    n = md("Count"),
+    percent = md("Proportion")
+  )
+```
+
+```{r}
+member2023 %>%
+  janitor::tabyl(year) %>%
+  gt::gt(caption = "SUAnime 2023 Member Spread by Year") %>%
+  gt::fmt_percent(columns = 3, decimals = 1) %>%
+  gt::cols_label(
+    year = md("Year of Degree"),
+    n = md("Count"),
+    percent = md("Proportion")
+  )
+```
+
+```{r}
+member2024 %>%
+  janitor::tabyl(year) %>%
+  gt::gt(caption = "SUAnime 2024 Member Spread by Year") %>%
+  gt::fmt_percent(columns = 3, decimals = 1) %>%
+  gt::cols_label(
+    year = md("Year of Degree"),
+    n = md("Count"),
+    percent = md("Proportion")
+  )
+```
+
+We can see from above that compared to 2024, 2023 and 2022 had a lot more variables regarding the spread of year, many of which are irrelevant. We ideally reduce the distribution of the year variable to that of 2024's options.
+
+```{r, warning= FALSE}
+member2022 = member2022 %>%
+  mutate(year = case_when(
+    year == "Old" ~ "Alumni",
+    year == "Alumni" ~ "I'm not currently attending university",
+    year == "None" ~ "I'm not currently attending university",
+    year == "Exchange" ~ "Other",
+    year == "Prospective student" ~ "I'm not currently attending university",
+    year == "" ~ "NA",
+    year == "UNSW rat" ~ "Other",
+    TRUE ~ year
+  ))
+```
+
+```{r, warning = FALSE}
+member2022 %>%
+  janitor::tabyl(year) %>%
+  gt::gt(caption = "SUAnime 2022 Member Spread by Year") %>%
+  gt::fmt_percent(columns = 3, decimals = 1) %>%
+  gt::cols_label(
+    year = md("Year of Degree"),
+    n = md("Count"),
+    percent = md("Proportion")
+  )
+```
+
+```{r}
+member2023 = member2023 %>%
+  mutate(year = case_when(
+    year == "000" ~ "Other",
+    year == "UNSW rat" ~ "Other",
+    year == "6th" ~ "Other",
+    year == "Alumni" ~ "I'm not currently attending university",
+    year == "Alumni from WSU" ~ "I'm not currently attending university",
+    year == "Next year" ~ "I'm not currently attending university",
+    year == "not student" ~ "I'm not currently attending university",
+    year == "no" ~ "I'm not currently attending university",
+    year == "Phd" ~ "Postgraduate",
+    year == "DEC 25" ~ "Other",
+    year == "Exchange" ~ "Other",
+    year == "exchange student" ~ "Other",
+    year == "Gang" ~ "Other",
+    year == "Tahun kedua puluh tiga" ~ "Other",
+    year == "Too many " ~ "Other",
+    year == "WH visa " ~ "Other",
+    year == "Yes" ~ "Other",
+    year == "na" ~ "NA",
+    year == "" ~ "NA",
+    year == " " ~ "NA",
+    TRUE ~ year
+  ))
+```
+
+```{r, warning = FALSE}
+member2023 %>%
+  janitor::tabyl(year) %>%
+  gt::gt(caption = "SUAnime 2023 Member Spread by Year") %>%
+  gt::fmt_percent(columns = 3, decimals = 1) %>%
+  gt::cols_label(
+    year = md("Year of Degree"),
+    n = md("Count"),
+    percent = md("Proportion")
+  )
+```
+
+```{r}
+memcount_2022 <- member2022 %>% count(year)
+memcount_2023 <- member2023 %>% count(year)
+  memcount_2024 <- member2024 %>% count(year)
+```
+
+George Commentary:
+- General trend is most sign ups consisting of first years, exponentially decreasing as we go up in years. Over 2022-2024, there is an increase in 3rd year and Postgraduate sign ups. This correlates with an increased number of returning members, as further below we see a decrease in first and second year attendance in our events whilst the number of 3rd year member attendance increases.
+
+```{r}
+mem_2022 <- ggplot(data = memcount_2022, aes(x = reorder(year, -n), y = n, fill = year)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 50, hjust = 1)) + ggtitle("SUAnime Member Count 2022") + xlab("Year Group") + ylab("Count") 
+mem_2022
+```
+
+```{r}
+mem_2023 <- ggplot(data = memcount_2023, aes(x = reorder(year, -n), y = n, fill = year)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 50, hjust = 1)) + ggtitle("SUAnime Member Count 2023") + xlab("Year Group") + ylab("Count") 
+mem_2023
+```
+
+```{r}
+mem_2024 <- ggplot(data = memcount_2024, aes(x = reorder(year, -n), y = n, fill = year)) + 
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 50, hjust = 1))
+mem_2024
+```
+
+### Checking Distribution of Year Groups through events
+```{r, warning = FALSE}
+events_2022 <- filter(events, year == "2022")
+events_2023 <- filter(events, year == "2023")
+events_2024 <- filter(events, year == "2024") %>% drop_na(firstyr)
+```
+
+```{r, warning = FALSE}
+first_2022 <- mean(events_2022$firstyr)
+first_2023 <- mean(events_2023$firstyr)
+first_2024 <- mean(events_2024$firstyr)
+second_2022 <- mean(events_2022$secondyr)
+second_2023 <- mean(events_2023$secondyr)
+second_2024 <- mean(events_2024$secondyr)
+third_2022 <- mean(events_2022$thirdyrplus)
+third_2023 <- mean(events_2023$thirdyrplus)
+third_2024 <- mean(events_2024$thirdyrplus)
+```
+
+```{r, warning = FALSE}
+year <- c(2022, 2023, 2024, 2022, 2023, 2024, 2022, 2023, 2024)
+degree_year <- c("First year", "First year", "First year", "Second year", "Second year", "Second year", "Third year", "Third year", "Third year") 
+scores <- c(first_2022, first_2023, first_2024, second_2022, second_2023, second_2024, third_2022, third_2023, third_2024)
+
+avg_event_year <- data.frame(scores, year, degree_year)
+```
+
+```{r}
+avg_event_year
+```
+```{r}
+ggplot(avg_event_year, aes(x = degree_year, y = scores, fill = degree_year)) + geom_bar(position = "dodge", stat = "identity") + facet_grid(~year) + ggtitle("SUAnime Average Year Distribution 2022-24") + xlab("Year Group") + ylab("Count") 
+```
+
+## International Student Attendance- Has it changed?
+
+SUAnime always has had a significant portion of its membership being from international students, we now proceed to investigate whether this part of our member demographics have changed. According to our data:
+
+- In 2023, `r 100 * round(((member2023 %>% filter(dom_int == "International") %>% nrow()) / nrow(member2023)), 2)`% of our society comprised of international students.
+
+- In 2024, this decreased to `r round((100* (member2024 %>% filter(dom_int == "International") %>% nrow()) / nrow(member2024)), 2)`%
+
+However, in terms of event attendance, there were similar proportions of international students attending our events:
+
+- In 2023, it was `r round(100* (events %>% drop_na(international) %>% group_by(year) %>% summarise(mean_int = mean(international)))[1,][2], 2)`%
+
+- In 2024, it was `r round(100 * (events %>% drop_na(international) %>% group_by(year) %>% summarise(mean_int = mean(international)))[2,][2], 2)`%
+
+George Commentary (The Sequel):
+
+- CAS shows a more consistent trend of around 40% international event attendance. 
+- Hallmarks tend to have big peaks in international attendance in semester 2 (But they subside).
+- Drawmeet has inconsistent event attendance (Result of small sample size).
+
+```{r}
+ggplot(events_2023, aes(x = week, y = international, group = class)) + geom_line(aes(color = class)) + geom_point(aes(color = class)) + facet_grid(~semester) + ggtitle("SUAnime International Student Attendance 2023") + xlab("Week") + ylab("Proportion") 
+```
+
+```{r, warning = FALSE}
+ggplot(events_2024, aes(x = week, y = international, group = class)) + geom_line(aes(color = class)) + geom_point(aes(color = class)) + ggtitle("SUAnime International Student Attendance 2024") + xlab("Week") + ylab("Proportion") 
+```
+
+
+## Gender- Is SUAnime Beating the Male Allegations?
+First off, a quick summary of all of this in the matrix below (Sorry for uglyyy), from it we can see that:
+
+- Percentage of females in SUAnime between 2023-2024 has decreased from around 40% to around 37.6%. The society is still primarily a sausage fest. Non-Binary percentage has increased since 2022 from 0.76% to 3.05% in 2024.
+
+```{r}
+# Wrangle that data (OMG Stop trolling on forms)
+member2024 = member2024 %>% mutate(gender = case_when(
+  str_starts(gender, "Male")~ "Male",
+  str_starts(gender, "Female")~ "Female",
+  str_starts(gender, "Non-binary") ~ "Non-binary",
+  str_starts(gender, "Genderfluid") ~ "Non-binary",
+  TRUE ~ "Unknown"
+  )
+  )
+
+member2023 = member2023 %>% mutate(gender = case_when(
+  str_starts(gender, "Male")~ "Male",
+  str_starts(gender, "Female")~ "Female",
+  str_starts(gender, "Non-binary") ~ "Non-binary",
+  str_starts(gender, "Neither") ~ "Non-binary",
+  str_starts(gender, "non") ~ "Non-binary",
+  TRUE ~ "Unknown"
+  )
+  )
+
+member2022 = member2022 %>% mutate(gender = case_when(
+  str_starts(gender, "Male")~ "Male",
+  str_starts(gender, "Female")~ "Female",
+  str_starts(gender, "Non-binary") ~ "Non-binary",
+  str_starts(gender, "Neither") ~ "Non-binary",
+  str_starts(gender, "non") ~ "Non-binary",
+  TRUE ~ "Unknown"
+  )
+  )
+
+# Get percentage from the raw number counts
+gen2024 = member2024 %>% group_by(gender) %>% count() 
+gen2024 = gen2024 %>% mutate(year = 2024, percent = 100 * n / sum(gen2024$n))
+gen2023 = member2023 %>% group_by(gender) %>% count() 
+gen2023 = gen2023 %>% mutate(year = 2023, percent = 100 * n / sum(gen2023$n))
+gen2022 = member2022 %>% group_by(gender) %>% count() 
+gen2022 = gen2022 %>% mutate(year = 2022, percent = 100 * n / sum(gen2022$n))
+
+# Join
+genders = rbind(gen2024, gen2023, gen2022) %>% mutate(year = as.factor(year))
+# Print Matrix
+genders %>% as.matrix()
+# Summary for descriptive stats
+reg_events_sem1 = reg_events_sem1 %>% mutate(fmratio = 100 * as.numeric(fmratio))
+gender_summary = reg_events_sem1 %>% group_by(year) %>% summarise(mean_fm = mean(fmratio))
+```
+In terms of attendance however, we actually see that Female Attendance in SUAnime has increased in Figure 3, to be more specific, looking at the average attendance female attendance between 2022-2024:
+
+- In 2022, `r round(gender_summary["mean_fm"][1,], 2)`% of regular event attendees were females.
+
+- In 2023, this actually dropped by `r round(gender_summary["mean_fm"][1,], 2) - round( gender_summary["mean_fm"][2,], 2)`% to `r round(gender_summary["mean_fm"][2,], 2)`%.
+
+- Now in 2024, this increased all the way up to `r round(gender_summary["mean_fm"][3,], 2)`%!
+
+What are some reasons for this large increase?
+
+- Generally, most of our events just had higher female (%) attendance compared to our predecessors. Example: Trivia's Female Attendance in 2023 went from 31.3% to 46.9% in 2024. 
+
+- The type of events we have ran this semester have more appeal to females I.e. Mahou Shoujo, and Stickers (Had 82% female attendance!). 
+
+
+```{r fig6, fig.cap= "Female Attendance of Events", warning=FALSE}
+ggplot(reg_events_sem1, aes(x = week, y = fmratio)) + geom_bar(stat = "identity") + facet_wrap(~year, scales = 'free_x') + theme_bw() + ylab("Female Attendance (%)") + xlab("Week") + ggtitle("Female (%) Attendance during Regular Events")
+
+```
+
+
+
+# Summary of Expenditure
+First off an overview of Expenditure (Cost per Person) for our events in SUAnime, for comparison between each year. I have only looked at Semester 1, since Semester 2 tends to have much heavier events on Maid Cafe and End of Year Events, Sem 2 expenditure is not representative of Sem 1. 
+
+```{r, warning = FALSE}
+events = events %>% mutate(actual_cost = as.numeric(actual_cost), costvatt = as.numeric(costvatt))
+
+budget_summary = events %>% filter(semester == 1) %>% group_by(year) %>% summarise(mean_cost = mean(actual_cost, na.rm = TRUE), iqr = IQR(costvatt, na.rm = TRUE))
+
+cost_summary = events  %>% filter(semester == 1) %>% group_by(year) %>% summarise(mean_cost = mean(costvatt, na.rm = TRUE), iqr = IQR(costvatt, na.rm = TRUE))
+
+attend_summary = events %>% filter(semester == 1)  %>% group_by(year) %>% summarise(mean_attend = mean(socpercent, na.rm = TRUE), iqr = IQR(socpercent, na.rm = TRUE))
+
+attend_summary2 = events %>% filter(semester == 1) %>% group_by(year) %>% summarise(mean_attend = mean(attendance, na.rm = TRUE), iqr = IQR(socpercent, na.rm = TRUE))
+
+reg_events_sem1 = reg_events_sem1 %>% mutate(actual_cost = as.numeric(actual_cost))
+
+ggsave("figures/cost.png",ggplot(reg_events_sem1, aes(x = week, y = actual_cost)) + geom_bar(stat = "identity") + facet_wrap(~year, scales = 'free_x') + theme_bw() + ylab("Actual Cost") + xlab("Week"))
+```
+
+- The average cost for all events throughout 2022-2024 was `r round(mean(budget_summary$mean_cost), 2)`. 
+    - In 2022, it was `r round(budget_summary["mean_cost"][1,],2)`
+    - In 2023, it was `r round(budget_summary["mean_cost"][2,],2)`
+    - In 2024, it was `r round(budget_summary["mean_cost"][3,],2)`
+
+- The average cost spent per person for all events throughout 2022-2024 was `r round(mean(cost_summary$mean_cost), 2)` per person. 
+    - In 2022, it was `r round(cost_summary["mean_cost"][1,],2)`
+    - In 2023, it was `r round(cost_summary["mean_cost"][2,],2)`
+    - In 2024, it was `r round(cost_summary["mean_cost"][3,],2)` (Note: Heavily increased by Hell's Kitchen, and this event was fueled by a Grant)
+    
+- What this indicates is that whilst expenditure has decreased from 2023, on average we are spending more money per person in 2024, likely a result of lower attendance figures due to being a smaller society.
+
+## Expenditure for Events
+
+I will graph our expenditure of all of the events over 2022-2024 with a barplot similar to the section on attendance. In summary:
+
+- Events involving food are usually less cost effective I.e. Maid Cafe, Drinks Night, Trivia
+
+```{r, warning= FALSE, message = FALSE}
+events = events %>% mutate(class = case_when(
+  str_starts(eventname, "Maid") ~ "Food", 
+  str_starts(eventname, "Dango") ~ "Food", 
+  str_starts(eventname, "Cup") ~ "Food",
+  str_starts(eventname, "Creativity") ~ "Food",
+  str_starts(eventname,"Board") ~ "Games",
+  str_starts(eventname,"Tabletop") ~ "Games",
+  str_starts(eventname,"Stickers") ~ "Creative",
+  str_starts(eventname,"Keychain") ~ "Creative",
+  str_starts(eventname, "Mahou") ~ "Creative",
+  str_starts(eventname, "SUMASH") ~ "Market",
+  str_starts(eventname, "Market") ~ "Market",
+  str_starts(eventname, "Visual") ~ "Creative",
+  str_starts(eventname, "WASABI") ~ "Hangout",
+  str_starts(eventname, "Meet") ~ "Hangout",
+  str_starts(eventname, "AGM") ~ "Political",
+  str_starts(eventname, "GM") ~ "Political",
+  str_starts(eventname, "Welcome") ~ "Welcome Tea",
+  str_starts(eventname, "Trivia") ~ "Trivia",
+  str_starts(eventname, "Drinks") ~ "Drinks Night",
+  class == "Arts" ~ "Creative",
+  class == "Chill" ~ "Hangout", 
+  class == "Sports" ~ "Hangout",
+  type == "CAS" ~ "CAS",
+  eventname == "Drawwmeet" ~ "Drawmeet",
+  TRUE ~ class
+  ))
+
+
+dir_costs = events %>% group_by(events$dirname) %>% summarise(mean_costvatt = mean(costvatt), mean_socpercent = mean(socpercent), mean_identity = mean(identity))
+
+
+p1 = events %>% filter(year == 2022 & type == "Regular Event") %>% ggplot(aes(x = eventname, y = costvatt, fill = class)) + geom_bar(position = "dodge",stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Cost per Person") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + ggtitle("Cost per Person (2022)") + ylim(c(-5, 15)) + facet_wrap(~semester, scales = 'free', labeller = sem_labeller)
+
+p2 = events %>% filter(year == 2023  & type == "Regular Event") %>% ggplot(aes(x = eventname, y = costvatt, fill = class)) + geom_bar(position = "dodge",stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle("Cost per Person (2023)") + ylab("Cost per Person") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + ylim(c(-5, 15)) + facet_wrap(~semester, scales = 'free', labeller = sem_labeller)
+
+p3= events %>% filter(year == 2024  & type == "Regular Event"| type == "Hangout") %>% ggplot(aes(x = eventname, y = costvatt, fill = class)) + geom_bar(position = "dodge",stat = "identity") + ggtitle("Cost per Person (2024)") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ylab("Cost per Person") + xlab ("Event Name") + guides(fill = guide_legend(title = "Event Category")) + ylim(c(-5, 15))
+
+p1
+p2
+p3
+
+```
+
+
+# Modelling - What Factors to investigate
+In this section, I will investigate what factors have some effect on attendance by checking their correlations.
+
+## Correlation of Budget vs Attendance- Does More Event lead to higher attendance?
+```{r, warning = FALSE}
+events = events %>% drop_na(actual_cost, socpercent)
+  
+ggplot(events, aes(x = actual_cost, y = socpercent, colour = year)) + geom_point() + ylab("Attendance (%)") + xlab("Actual Cost")
+
+cor(events$actual_cost, events$socpercent)
+```
+Although we do see some general trend that as the cost increases, so does the attendance, and that there is moderate correlation between overall cost and attendance.
+
+## Correlation of Identity vs Attendance- More Identity = More members?
+```{r}
+ggplot(events, aes(x = identity, y = socpercent, colour = year)) + geom_point() + ylab("Attendance (%)") + xlab("Actual Cost")
+
+cor(events$identity, events$socpercent)
+```
+No correlation between event identity and overall attendance.
+
+## Correlation of Week vs Attendance- Does the Week affect our attendance? (Spoilers: Yes)
+```{r}
+ggplot(events, aes(x = week, y = socpercent, colour = year)) + geom_point() + ylab("Attendance (%)") + xlab("Week")
+
+cor(as.numeric(events$week), events$socpercent)
+```
+
+
+## Correlation of Event Duration vs Attendance- Does more cost Correlate to higher Attendance?
+```{r, warning = FALSE, message = FALSE}
+events = events %>% drop_na(socpercent)
+events = events %>% drop_na(costvatt) %>% mutate(costvatt = as.numeric(costvatt), actual_cost = as.numeric(actual_cost)) 
+
+ggplot(events, aes(x = duration, y = socpercent, colour = year)) + geom_point() + ylab("Attendance (%)") +xlab("Event Duration (Hours)")
+cor(events$duration, events$socpercent)
+```
+- There is a weak linear correlation between duration of an event vs the attendance.
+
+# Building Model
+
+Modelling attendance of a future event is a **regression** problem, given some existing information, predict what the expected attendance will be present. Here's a few models that could be considered (To my knowledge):
+
+- Linear Regression: We fit a line of best fit using various factors (Week, Budget, Event Class, etc.) to get an equation. Sub in these factors and a predicted attendance is given. Some issues that have been encountered for this approach is that in the earlier section, we have seen that correlation may not neccessarily be linear.
+
+- Regression Tree: We build a decision tree that investigates the factors to predict the attendance.
+
+- KNN Regression: We look at "k" points most similar to our event, attendance is predicted by averaging the attendances of the "k" points. 
+
+## KNN Regression
+
+### Initial Model with All Factors
+
+The initial model of KNN will use all relevant factors of an event, this is:
+
+- Week: What week is it?
+
+- Class: What category of event is being ran?
+
+- Type: Is this a Regular, CAS or Drawmeet event? 
+
+- Actual Cost: How much money will be spent for this event?
+
+- Identity: What is the identity of the event?
+
+- Name: What's the name of the event?
+
+- Duration: How long does the event last?
+
+Numerical variables have been standardised via the **scale()** function, this makes it so our distance comparisons for the KNN algorithm is fair for all variables. 
+
+The plot below depicts the MAE results of each different value of k, RMSE being "On average, how off is the model?", the error bars for each point indicate the spread (SD) of RMSE for a given k value. We see that the KNN model does well when it's predicting "k = 8" of the closest events, and it performs worse over higher k values, as less and less similar events are being used for reference.
+
+Based on the initial model result from the figure below, we see that the RMSE value hovers between 3.5-4, this means on average this model's prediction will be off by around 4%, not very good! 
+
+One reason that may have led to this result is due to the "Curse of Dimensionality", more factors means more dimensions to account for, makes the KNN "distance" calculations perform worse. So, next we'll try to select only the most important features.
+
+```{r}
+# Set Seeds for Training
+set.seed(2024)
+seeds = vector(mode = "list", length = 10)
+seeds = lapply(seeds, function(x) sample.int(n = 10000000, size = 20))
+seeds[[length(seeds)+ 1]] <- sample.int(n = 10000000, size = 1)
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+library(class)
+library(cvTools)
+library(caret)
+library(FNN)
+
+# Change all attributes of events so they have correct data type (Factors, int, etc.)
+events_model = events %>% mutate(eventname = as.factor(eventname), semester = as.factor(semester), type = as.factor(type), class = as.factor(class), identity = as.factor(identity), duration = as.numeric(duration))
+
+
+# Scale the numerical factors, If we don't do this the KNN won't be accurate!
+events_model_scaled = events_model %>% mutate(actual_cost = as.vector(scale(events_model$actual_cost)), duration = as.vector(scale(events_model$duration))) %>% drop_na(socpercent)
+
+# Evaluation- 5-fold Cross Validation kNN
+features = c("week", "class", "type", "actual_cost", "socpercent", "duration", "identity")
+
+train_knn <- function(data, features){
+  X = data %>% select(all_of(features))
+  # Repeated CV with 10-folds and 10 repeats
+  fitControl = trainControl(method = "repeatedcv", seeds = seeds)
+  model = train(socpercent ~., data = X, method = "knn", trControl = fitControl, tuneGrid = expand.grid(k = 1:20))
+  return(model)
+}
+
+knn_pred = train_knn(events_model_scaled, features)
+
+
+# The model 
+ggplot(knn_pred$results) + geom_line(aes(x= k, y = MAE)) + geom_point(aes(x = k, y = MAE)) + geom_errorbar(aes(x = k, ymin = MAE -MAESD, ymax = MAE + MAESD)) + theme_bw() + ggtitle("MAE of KNN Model with all variables")
+
+
+# Use predict() to use the caret model.
+
+```
+### Model with Selected Features
+
+Based on my analysis earlier, I believe these are the most crucial factors for predicting attendance:
+
+- Week: Timing heavily affects attendance, people attend more events during the earlier weeks and the final week. 
+- Class: What happens in the event will influence the attendance.
+
+- Duration: Longer events means more people have time to visit / attend
+
+As can be seen, there's an improvement in our KNN's results
+
+```{r}
+features = c("week", "class", "socpercent", "duration")
+knnv2_pred = train_knn(events_model_scaled, features)
+
+X = events_model_scaled %>% select(all_of(features))
+# Repeated CV with 10-folds and 10 repeats
+fitControl = trainControl(method = "repeatedcv", seeds = seeds)
+model = train(socpercent ~., data = X, method = "knn", trControl = fitControl, tuneGrid = expand.grid(k = 1:20))
+
+ggplot(knnv2_pred$results) + geom_line(aes(x= k, y = MAE)) + geom_point(aes(x = k, y = MAE)) + geom_errorbar(aes(x = k, ymin = MAE -MAESD, ymax = MAE + MAESD)) + theme_bw() + ggtitle("RMSE of KNN Model with all variables")
+```
+
+## Regression Trees
+
+We build a tree using the same set of initial features from the KNN section, note that unlike KNNs Regression Trees don't require any scaling. The results below show the Regression Tree formed:
+
+- If our budget is < 214.4, then check if the duration is < 2.5 hours.
+    - If the event duration is < 2.5 hours, it predicts a 2.818% attendance
+    - Otherwise, it predicts a 6.573% attendance.
+    
+- If our budget is >= 214.4, check if the budget is < 507.9
+    - If it is, then predict a 16.36% attendance
+    - Otherwise, predict a 21.19% attendance.
+    
+This tree doesn't really make use of any other information, and it also performs worse than our KNN algorithm earlier, given that the MAE is much higher, this won't be very useful for our predictions.
+
+```{r, warning = FALSE}
+features = c("week", "class", "actual_cost", "socpercent", "duration")
+
+train_tree <- function(data, features){
+  X = data %>% select(all_of(features))
+  # Repeated CV with 10-folds and 10 repeats
+  fitControl = trainControl(method = "repeatedcv", seeds = seeds)
+  model = train(socpercent ~., data = X, method = "rpart", trControl = fitControl, metric = "MAE", tuneGrid = expand.grid(cp = seq(from = 0, to = 0.1, by = 0.01)))
+  return(model)
+}
+
+tree = train_tree(events_model, features)
+
+plot(tree$finalModel, uniform = TRUE, margin = 0.2)
+text(tree$finalModel, use.n = TRUE, all = TRUE, cex = .8)
+```
+
+### Regression Forest
+
+Generally, a single Decision Tree on it's own usually isn't a very good, so we can instead use multiple decision trees for our predictions to get a better result. This is what a **Random Forest** classifier does. 
+
+- In terms of both Regression Trees and Random Forests, budget and week of event seem to be the most important factors for their predictions.
+
+```{r}
+# Dropped Identity- Isn't correlated with attendance, and made models worse.
+features = c("week", "class", "actual_cost", "socpercent", "duration")
+
+train_forest <- function(data, features){
+  X = data %>% select(all_of(features))
+  # Repeated CV with 10-folds and 10 repeats
+  fitControl = trainControl(method = "repeatedcv", seeds = seeds)
+  model = train(socpercent ~., data = X, method = "rf", trControl = fitControl, metric = "MAE")
+  return(model)
+}
+
+forest = train_forest(events_model, features)
+forest$finalModel
+```
+## Support Vector Regression
+
+We use the concept of Support Vector Machines to perform a regression, the idea is to optimise for a maximum margin hyperplane that separates points from one another. There are various ways the SVM can fit on our data, it depends on which kernel function is being used. I have evaluated all available kernel functions in the boxplot below, as we can see whilst both Linear and Radial Kernels perform similarly in RMSE and MAE, a Radial Kernel demonstrates lower MAE on the dataset, and hence is selected as the kernel of choice.
+
+```{r}
+features = c("week", "class", "actual_cost", "socpercent", "duration")
+X = events_model %>% select(all_of(features))
+# SVM Library
+library(e1071)
+
+set.seed(2024)
+# 10x Repeated 10-Fold CV for SVM
+svm_cv = function(){
+  cvK = 10
+  kernels = c("linear", "radial", "poly", "sigmoid")
+  svm_cv_results = data.frame()
+  for (kernel in kernels){
+  for (j in 1: 10){
+      cvFolds = createFolds(X$socpercent, k = cvK)
+    for (i in 1:cvK){
+      test_id = cvFolds[[i]]
+      X_train = X[-test_id,]
+      X_test = X[test_id,]
+      svm_fit = svm(socpercent~., data = X_train, kernel = kernel)
+      predicted = predict(svm_fit, X_test)
+      rmse = sqrt(sum((predicted - X_test$socpercent))^2 / nrow(X_test)) 
+      mae = sum(abs(predicted - X_test$socpercent)) / nrow(X_test)
+      svm_results = data.frame(rmse, mae, kernel = kernel)
+      svm_cv_results = rbind(svm_cv_results, svm_results)
+    }
+  }
+}
+  return(svm_cv_results)
+}
+
+svm_data = svm_cv()
+
+svm(socpercent~., data = X, kernel = "radial")
+
+ggplot(svm_data, aes(x = kernel, y = rmse, fill = kernel)) + geom_boxplot() + ggtitle ("RMSE of SVR based on Kernel Types")
+
+ggplot(svm_data, aes(x = kernel, y = mae, fill = kernel)) + geom_boxplot() + ggtitle ("MAE of SVR based on Kernel Types")
+```
+
+
+# Final Results
+
+Our Final Results shows the following:
+- In terms of performance, KNN is the best method for modelling our attendance out of the explored methods, with Random Forest and SVR approaches falling not too far behind. A regression Tree demonstrated the worst performance (Though, this was to be expected since it's the weakest classifier in the list).
+
+- This is due to the limited amount of data (170-ish events isn't too large) available, which would make RF and SVR approaches perform worse.
+
+- Logically, we can also see why a KNN would perform better- It looks at the 4 most similar events we've ran in the past, and averages the attendance as it's prediction- This simple approach also is not as impacted by the small dataset.
+
+
+```{r}
+svm_radial = svm_data %>% filter(kernel == "radial") 
+svm_final = data.frame(RMSE = mean (svm_radial$rmse), MAE = mean(svm_radial$mae), kernel = "radial") %>% mutate(model = "SVM")  %>% select(c("RMSE", "MAE", "model"))
+
+tree_final = tree$results %>% filter(cp == tree$bestTune[1,]) %>% mutate(model = "Tree") %>% select(c("RMSE", "MAE", "model"))
+forest_final = forest$results %>% filter(mtry == forest$bestTune[1,]) %>% mutate(model = "Forest")  %>% select(c("RMSE", "MAE", "model"))
+knn_final = knnv2_pred$results %>% filter(k == knnv2_pred$bestTune[1,]) %>% mutate(model = "KNN")  %>% select(c("RMSE", "MAE", "model"))
+
+models_final = rbind(svm_final, forest_final, knn_final, tree_final) 
+
+models_final %>% mutate_if(is.numeric, round, 3) %>% reactable() 
+```
+
+
+```{r}
+svm_fit_final = svm(socpercent~., data = X)
+# Save Models as RData
+save(tree, forest, svm_fit_final, knnv2_pred, file = "models.RData")
+test_input = data.frame(week = as.factor(1), class = "Welcome Tea", duration = 3)
+test_input = data.frame(week = as.factor(1), actual_cost = 2000, class = "Welcome Tea", duration = 3)
+
+save(events_model, file = "knn_data.RData")
+```
+# Shiny App!
+
+A basic Shiny App has been created for the models discussed above right [here](https://ayasnisam.shinyapps.io/prediction/)
+
+# Recommendations to the Top 4
+
+- Keep trying new ideas for events (Big Shoutout to our Event Directors btw)! They are getting good interest from our newer members and as the data has shown, we are beating the Sausage Fest allegations (For Event Attendance)
+
+- Find ways to boost First and Second Year Signups, we are in dire need of fresh blood in SUAnime!
+
+- Go all out in our early weeks (Shoutout to WTP + Trivia planning), as this is when we'll be getting the most traction! 
+
+
+# Suggestions for the Future of SUAnime Events Table Entries
+
+- NEW Metric for Events Table- Returning Member attendance: I believe this is a very useful metric since this can be used to determine New Member Attendance. We want to attract our new members to ensure the longevity of the society. 
+
+- Data Dictionary- Something that explains what the variables are, similar in format to the [Analytics Officer Manifesto](https://docs.google.com/document/d/1NeWJIltxVXGsUX49-C2Q-k9HoClQ_J_yjFdstcu4qSs/edit#), we encountered discrepancies in interpretations of some variables during this Project (I.e. fmratio, class, etc.)
+
+- More Descriptive Class variable! Stating that our regular events is "Hallmark" isn't very informative for modelling or analysis! (I.e. Trivia vs Stickers are very different events!!) . I believe Class should give general insights into what the event will be about.
+
+- Attendance in the future should not track Exec Attendance in my opinion, they **have** to be there, or else there is no event, and it can affect stats such as returning members, inflate attendance, etc. 
+
+- Add an event duration variable, mostly for the purposes of modelling (I had to search all the durations up from announcements this time)
+
+- SUAnime Express Metrics pls??  
+
