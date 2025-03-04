@@ -135,20 +135,18 @@ for (interest in member2025$interests){
 
 # Look at all entries in the vector, do some counting, replacing and get a dataframe of all subcultures
 interests2025 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_equal(interests_temp, "") ~ NA, TRUE ~ interests_temp) %>% forcats::fct_lump_min(min = 4) %>% table() %>% data.frame() %>% mutate(percent = 100* Freq/dim(member2025)[1], year = as.factor(2025))
-
 colnames(interests2025) = c("subculture", "interested", "interested_prop", "year")
 
-member2025 = member2025 %>% mutate(subculture = tolower(member2025$subculture))
-member2025$interests= str_split(member2025$subculture, ",") 
+member2024 = member2024 %>% mutate(subculture = tolower(member2024$subculture))
+member2024$interests= str_split(member2024$subculture, ",") 
 interests_temp = c()
 # Split up the subculture interests into individual entries, then join them into a large vector
-for (interest in member2025$interests){
+for (interest in member2024$interests){
   interests_temp = append(interests_temp, trimws(interest))
 }
 
 # Look at all entries in the vector, do some counting, replacing and get a dataframe of all subcultures
 interests2024 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_equal(interests_temp, "") ~ NA, TRUE ~ interests_temp) %>% forcats::fct_lump_min(min = 4) %>% table() %>% data.frame() %>% mutate(percent = 100* Freq/dim(member2024)[1], year = as.factor(2024))
-
 colnames(interests2024) = c("subculture", "interested", "interested_prop", "year")
 
 member2023 = member2023 %>% mutate(subculture = tolower(member2023$subculture))
