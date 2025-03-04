@@ -31,18 +31,19 @@ colnames(discord) = new_names
 soc_stats = c("attendance", 
               "fmratio", "returning", "demographic", "year", "international")
 
-current_member_info <- read_sheet("https://docs.google.com/spreadsheets/d/1W9VP5X0-ZclRysUeUlIBMw-_QVVQsQZbZs-65FemgSU/edit#gid=495199417", sheet = "Data Wrangling") # Read in Data. 
+current_member_info <- read_sheet("https://docs.google.com/spreadsheets/d/1rZbDscF7A1N1Qivh3H0NTHDnw41BGZX6228cIn-ccaM/edit?gid=1763387998#gid=1763387998", sheet = "Data Wrangling") # Read in Data. 
 # ================================================
 # Preprocessing
 new_names = c("member", "firstname", "preferredname", "lastname", "usu_number", "pronouns","card_no","email","notes","gender","media","nationality","year","subculture")
 new_names2022 = c("member", "firstname","preferredname", "lastname","usu_number","card_no","notes", "card_no2","year")
-stats = read_excel("data/2024_stats.xlsx")
+stats = read_excel("data/2025_stats.xlsx")
 
 member2022 = read_sheet("https://docs.google.com/spreadsheets/d/1RAMAuK7TWcQPi6cs-nphxJIy3aO8CwBKkdA3vSygKRs/edit?gid=316341411#gid=316341411", sheet = "Data Wrangling")
 member2023 = read_sheet("https://docs.google.com/spreadsheets/d/1lDs-xJq3hIx46krHSRdEkIqcMThrBB5AvZUeLtXTcks/edit?gid=1526743482#gid=1526743482", sheet = "Data Wrangling")
 member2024 = read_sheet("https://docs.google.com/spreadsheets/d/1W9VP5X0-ZclRysUeUlIBMw-_QVVQsQZbZs-65FemgSU/edit?gid=822533709#gid=822533709", sheet = "Data Wrangling")
+member2025 = read_sheet("https://docs.google.com/spreadsheets/d/1rZbDscF7A1N1Qivh3H0NTHDnw41BGZX6228cIn-ccaM/edit?gid=1763387998#gid=1763387998", sheet = "Data Wrangling")
 
-exec_usus = c(2072539, 2211426, 2384144, 2237389, 2229025, 2224556, 2343769, 2063032, 2364528, 2326885, 2222064, 2353799, 2285564, 2411427, 2189572, 2366390, 2436355, 2353751, 1945520, 2319959, 2386582, 2402756, 2233015, 2458135, 2223030)
+c(2072539, 2224556, 2189572, 2471004, 2436355, 2223030, 2384144, 2351235, 2386582, 2411427, 2229025, 2353751, 2402756, 2466680)
 
 events = read_sheet("https://docs.google.com/spreadsheets/d/1wegv4TXT2jBnZRoYtrP3s7eMm7-S22e97qzzmjdw0Ww/edit?gid=1078826250#gid=1078826250")
 
@@ -50,6 +51,7 @@ events = read_sheet("https://docs.google.com/spreadsheets/d/1wegv4TXT2jBnZRoYtrP
 colnames(member2022) = new_names2022
 colnames(member2023) = new_names
 colnames(member2024) = new_names
+colnames(member2025) = new_names
 # ========================================================
 
 # Everything doer that calculates all event metrics
@@ -70,11 +72,11 @@ every_doer = function(eventurl){
   }
   
   # Calculate the number of returning members
-  returning =  signif(mean(event$usu_number!= 0 & !event$usu_number %in% exec_usus & (event$usu_number %in% member2023$usu_number |
+  returning =  signif(mean(event$usu_number!= 0 & !event$usu_number %in% exec_usus & (event$usu_number %in% member2024$usu_number | event$usu_number %in% member2023$usu_number |
                                                                                         event$usu_number %in% member2022$usu_number)), 2)
   
   # We have the option of also checking NEW members that are also first year
-  new = mean(event$usu_number!= 0 & !event$usu_number %in% exec_usus & !(event$usu_number %in% member2023$usu_number |
+  new = mean(event$usu_number!= 0 & !event$usu_number %in% exec_usus & !(event$usu_number %in% member2024$usu_number | event$usu_number %in% member2023$usu_number |
                                                                            event$usu_number %in% member2022$usu_number))
   
   colnames(event)[2] = "usu_number" 
@@ -82,7 +84,7 @@ every_doer = function(eventurl){
   tflist = stats$name %in% attendees
   stats$regs1 = stats$regs1 + tflist
   #Swap for relevant statistic!
-  write_xlsx(stats, path = "2024_stats.xlsx")
+  write_xlsx(stats, path = "2025_stats.xlsx")
   
   calculable <- inner_join(event, current_member_info, by = c("Member" = "Member"))
   
@@ -115,7 +117,7 @@ every_doer = function(eventurl){
   face = signif(sum(math_obj$face, na.rm = TRUE)/total, 2)
   insta = signif(sum(math_obj$insta, na.rm = TRUE)/total, 2)
   
-  result = data.frame(attendance = total, first = first, second = second, old = old, fmratio = fmratio, nonbi = nonbi, international = international, discord = discord, wechat = wechat, tiktok = tiktok, face = face, insta= insta, returning = returning) 
+  result = data.frame(attendance = total, first = first, second = second, old = old, international = international, discord = discord, wechat = wechat, tiktok = tiktok, face = face, insta= insta, fmratio = fmratio, nonbi = nonbi, returning = returning) 
   
   return(result) 
 }
@@ -123,11 +125,24 @@ every_doer = function(eventurl){
 
 # Preprocessing for Subculture demographic interests
 # ====================================================
-member2024 = member2024 %>% mutate(subculture = tolower(member2024$subculture))
-member2024$interests= str_split(member2024$subculture, ",") 
+member2025 = member2025 %>% mutate(subculture = tolower(member2025$subculture))
+member2025$interests= str_split(member2025$subculture, ",") 
 interests_temp = c()
 # Split up the subculture interests into individual entries, then join them into a large vector
-for (interest in member2024$interests){
+for (interest in member2025$interests){
+  interests_temp = append(interests_temp, trimws(interest))
+}
+
+# Look at all entries in the vector, do some counting, replacing and get a dataframe of all subcultures
+interests2025 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_equal(interests_temp, "") ~ NA, TRUE ~ interests_temp) %>% forcats::fct_lump_min(min = 4) %>% table() %>% data.frame() %>% mutate(percent = 100* Freq/dim(member2025)[1], year = as.factor(2025))
+
+colnames(interests2025) = c("subculture", "interested", "interested_prop", "year")
+
+member2025 = member2025 %>% mutate(subculture = tolower(member2025$subculture))
+member2025$interests= str_split(member2025$subculture, ",") 
+interests_temp = c()
+# Split up the subculture interests into individual entries, then join them into a large vector
+for (interest in member2025$interests){
   interests_temp = append(interests_temp, trimws(interest))
 }
 
@@ -150,7 +165,7 @@ interests2023 = case_when(str_starts(interests_temp, "vtuber") ~ "vtuber", str_e
 
 colnames(interests2023) = c("subculture", "interested", "interested_prop", "year")
 
-interests= rbind(interests2023, interests2024)
+interests= rbind(interests2023, interests2024, interests2025)
 
 
 # Preprocessing for year groups
@@ -192,9 +207,9 @@ member2023 = member2023 %>%
     TRUE ~ year
   ), year = "2023")
 
-member2024 = member2024 %>% mutate(degree_year= year, year = "2024")
+member2025 = member2025 %>% mutate(degree_year= year, year = "2025")
 
-member_years = rbind(member2024 %>% select("degree_year", "year"), member2023 %>% select("degree_year", "year"), member2022 %>% select("degree_year","year"))
+member_years = rbind(member2025 %>% select("degree_year", "year"), member2024 %>% select("degree_year", "year"), member2023 %>% select("degree_year", "year"), member2022 %>% select("degree_year","year"))
 
 # Shiny UI
 ui <- dashboardPage(
