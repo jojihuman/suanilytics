@@ -205,6 +205,8 @@ member2023 = member2023 %>%
     TRUE ~ year
   ), year = "2023")
 
+member2024 = member2024 %>% mutate(degree_year= year, year = "2024")
+
 member2025 = member2025 %>% mutate(degree_year= year, year = "2025")
 
 member_years = rbind(member2025 %>% select("degree_year", "year"), member2024 %>% select("degree_year", "year"), member2023 %>% select("degree_year", "year"), member2022 %>% select("degree_year","year"))
